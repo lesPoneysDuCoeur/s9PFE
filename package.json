@@ -1,0 +1,21 @@
+{
+    "author": "idriss.ketterer@reseau.eseo.fr",
+    "dependencies": {},
+    "keywords": [],
+    "name": "s9project",
+    "pebble": {
+        "displayName": "s9Project",
+        "enableMultiJS": true,
+        "messageKeys": [],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "uuid": "25c3a87f-6fef-4f90-a4da-23a870e69c64",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
