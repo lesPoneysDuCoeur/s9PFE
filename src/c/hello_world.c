@@ -95,6 +95,26 @@ int toMillimeter(AccelData *data){
  return data[0].z/2;
 }
 
+void Calibrate(AccelData *data)
+{
+ unsigned int count1;
+ count1 = 0;
+ do{
+    data[0].x = data[0].x + data[1].x;
+    data[0].y = data[0].y + data[1].y;
+    data[0].z = data[0].z + data[1].z;
+ //ADC_GetAllAxis();
+ //   sstatex = sstatex + Sample_X; // Accumulate Samples
+  //  sstatey = sstatey + Sample_Y;
+    count1++;
+ }while(count1!=0x0400); // 1024 times
+  data[0].x=data[0].x>>10;
+  data[0].y=data[0].y>>10;
+  data[0].z=data[0].z>>10;
+ //sstatex=sstatex>>10; // division between 1024
+ //sstatey=sstatey>>10;
+}
+
 static void accel_raw_handler(AccelData *data, uint32_t num_samples)
 {
   static char bufferStringPosition[] = "XYZ: 9999 / 9999 / 9999";
@@ -115,13 +135,12 @@ static void accel_raw_handler(AccelData *data, uint32_t num_samples)
   text_layer_set_text(accel_layer, bufferStringPosition);
   text_layer_set_text(deep_layer, bufferStringDeep);
   text_layer_set_text(checkDeep_layer, bufferStringDeepOK);
-
 }
  
 static void init()
 {
- 
   window = window_create();
+  
   WindowHandlers handlers = {
     .load = window_load,
     .unload = window_unload
@@ -139,6 +158,8 @@ static void deinit()
 
 int main(void)
 {
+  AccelData *data = NULL;
+  Calibrate(data);
   init();
   app_event_loop();
   deinit();
