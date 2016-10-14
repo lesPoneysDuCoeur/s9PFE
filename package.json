@@ -2,9 +2,9 @@
     "author": "idriss.ketterer@reseau.eseo.fr",
     "dependencies": {},
     "keywords": [],
-    "name": "s9project",
+    "name": "acceldata",
     "pebble": {
-        "displayName": "s9Project",
+        "displayName": "AccelData",
         "enableMultiJS": true,
         "messageKeys": [],
         "projectType": "native",
@@ -12,7 +12,7 @@
             "media": []
         },
         "sdkVersion": "3",
-        "uuid": "25c3a87f-6fef-4f90-a4da-23a870e69c64",
+        "uuid": "3fdfcd45-8714-4149-997c-16d627f4ad07",
         "watchapp": {
             "watchface": false
         }
