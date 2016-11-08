@@ -4,17 +4,19 @@
 /*----------------------------------------------------------------------------*/
 
 #include "pebble.h"
+//#include "windows.h"
 
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
 
-#define SAMPLING_RATE         ACCEL_SAMPLING_10HZ
+#define SAMPLING_RATE         ACCEL_SAMPLING_100HZ
 #define SAMPLES_PER_CALLBACK  1
 
 #define SYNC_BUFFER_SIZE      48
 
 static Window * window;
+static TextLayer *frequency_layer;
 static AppSync  sync;
 
 static BitmapLayer * image_layer;
@@ -22,8 +24,10 @@ static GBitmap     * image;
 
 static bool     isConnected = false;
 static bool     tapSwitchState = false;
+static bool     isPeak = false;
 static int      syncChangeCount = 0;
 static uint8_t  sync_buffer[SYNC_BUFFER_SIZE];
+
 
 enum Axis_Index {
   AXIS_X = 0,
@@ -138,7 +142,14 @@ static void window_load(Window * window)
                  sync_tuple_changed_callback,
                  sync_error_callback,
                  NULL );
-
+// Layer *window_layer = window_get_root_layer(window);
+//	GRect bounds = layer_get_bounds(window_layer);
+/*
+	frequency_layer = text_layer_create((GRect) { .origin = { 0, 72 }, .size = { bounds.size.w, 20 } });
+	text_layer_set_text(frequency_layer, "");
+	text_layer_set_text_alignment(frequency_layer, GTextAlignmentCenter);
+	layer_add_child(window_layer, text_layer_get_layer(frequency_layer)); */
+  
   syncStats.sync_set++;
 }
 
@@ -189,7 +200,28 @@ void accel_data_callback(void * data, uint32_t num_samples)
     TupletInteger(PP_KEY_Y, (int) vector->y),
     TupletInteger(PP_KEY_Z, (int) vector->z),
   };
+  /*
+  if(vector->x > 1000 && vector->z > 1000){
+    isPeak = true;
+    vibes_short_pulse();
+    DWORD dwStartTime = GetTickCount();
+    DWORD dwElapsed;
+    
+    isPeak = false;
+    if(vector->x > 1000 && vector->z > 1000)
+      isPeak = true;
+        dwElapsed = GetTickCount() - dwStartTime;
+        float seconds =  dwElapsed/1000 + (dwElapsed - dwElapsed/1000);
+        float frequency = 1/seconds;
+        frequency_layer = text_layer_create((GRect) { .origin = { 0, 72 }, .size = { bounds.size.w, 20 } });
+	      text_layer_set_text(frequency_layer, "%f", frequency);
+	      text_layer_set_text_alignment(frequency_layer, GTextAlignmentCenter);
+    isPeak = false;
+    
+  }
 
+  */
+  
   /* Send the newly built dictionary to the remote side. */
   result = app_sync_set( &sync, vector_dict, ARRAY_LENGTH(vector_dict) );
 
@@ -293,15 +325,15 @@ int main(void)
   const bool animated = true;
   window_stack_push(window, animated);
 
-  Layer * window_layer = window_get_root_layer(window);
-  GRect bounds = layer_get_frame(window_layer);
+  //Layer * window_layer = window_get_root_layer(window);
+  //GRect bounds = layer_get_frame(window_layer);
 
   /* Display the simple splash screen to indicate PebblePointer is running. */
   //image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_PEBBLEPOINTER);
-  image_layer = bitmap_layer_create(bounds);
-  bitmap_layer_set_bitmap(image_layer, image);
-  bitmap_layer_set_alignment(image_layer, GAlignCenter);
-  layer_add_child(window_layer, bitmap_layer_get_layer(image_layer));
+  //image_layer = bitmap_layer_create(bounds);
+  //bitmap_layer_set_bitmap(image_layer, image);
+  //bitmap_layer_set_alignment(image_layer, GAlignCenter);
+  //layer_add_child(window_layer, bitmap_layer_get_layer(image_layer));
 
   /* Basic accelerometer initialization.  Enable Tap-Tap functionality. */
   accel_service_set_sampling_rate( SAMPLING_RATE );
