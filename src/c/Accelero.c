@@ -1,10 +1,9 @@
-/*----------------------------------------------------------------------------*/
-/* PebblePointer.c                                                            */
-/* (C) Robin Callender 2014                                                   */
-/*----------------------------------------------------------------------------*/
-
 #include "pebble.h"
-//#include "windows.h"
+#include <math.h>
+#include "integration.h"
+#include "filter.h"
+#include "calibration.h"
+#include "Accelero.h"
 
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
@@ -16,7 +15,6 @@
 #define SYNC_BUFFER_SIZE      48
 
 static Window * window;
-static TextLayer *frequency_layer;
 static AppSync  sync;
 
 static BitmapLayer * image_layer;
@@ -24,10 +22,8 @@ static GBitmap     * image;
 
 static bool     isConnected = false;
 static bool     tapSwitchState = false;
-static bool     isPeak = false;
 static int      syncChangeCount = 0;
 static uint8_t  sync_buffer[SYNC_BUFFER_SIZE];
-
 
 enum Axis_Index {
   AXIS_X = 0,
@@ -53,11 +49,33 @@ typedef struct {
   uint64_t    sync_missed;
 } sync_stats_t;
 
+  Tuplet vector_dict_acceleration[] = {
+    TupletInteger(PP_KEY_CMD, PP_CMD_VECTOR),
+    TupletInteger(PP_KEY_X, (int) vector->x),
+    TupletInteger(PP_KEY_Y, (int) vector->y),
+    TupletInteger(PP_KEY_Z, (int) vector->z),
+  };
+
+  Tuplet vector_dict_velocity[] = {
+    TupletInteger(PP_KEY_CMD, PP_CMD_VECTOR),
+    TupletInteger(PP_KEY_X, (int) vector->x),
+    TupletInteger(PP_KEY_Y, (int) vector->y),
+    TupletInteger(PP_KEY_Z, (int) vector->z),
+  };
+  
+  Tuplet vector_dict_position[] = {
+    TupletInteger(PP_KEY_CMD, PP_CMD_VECTOR),
+    TupletInteger(PP_KEY_X, (int) vector->x),
+    TupletInteger(PP_KEY_Y, (int) vector->y),
+    TupletInteger(PP_KEY_Z, (int) vector->z),
+  };
+
 static sync_stats_t   syncStats = {0, 0, 0};
 
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
+
 static char * AppMessageResult_to_String(AppMessageResult error)
 {
   switch (error) {
@@ -81,6 +99,7 @@ static char * AppMessageResult_to_String(AppMessageResult error)
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
+
 static char * DictionaryResult_to_String(DictionaryResult error)
 {
   switch (error) {
@@ -92,9 +111,11 @@ static char * DictionaryResult_to_String(DictionaryResult error)
     default:                           return "unknown";
   }
 }
+
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
+
 static void sync_error_callback(DictionaryResult dict_error,
                                 AppMessageResult error,
                                 void * context)
@@ -106,6 +127,20 @@ static void sync_error_callback(DictionaryResult dict_error,
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
+
+static int getSign(int number){
+  if(number < 0){
+    return 1;
+  }
+  else{
+    return -1;
+  }
+}
+
+/*----------------------------------------------------------------------------*/
+/*                                                                            */
+/*----------------------------------------------------------------------------*/
+
 static void sync_tuple_changed_callback(const uint32_t key,
                                         const Tuple * new_tuple,
                                         const Tuple * old_tuple,
@@ -122,26 +157,54 @@ static void sync_tuple_changed_callback(const uint32_t key,
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
+
 static void window_load(Window * window)
 {
   APP_LOG(APP_LOG_LEVEL_INFO, "%s", __FUNCTION__);
 
-  /* This is just a dummy structure used for initializaton only. */
-  Tuplet vector_dict[] = {
+  /* Initialization of dictionaries */
+  Tuplet vector_dict_acceleration[] = {
+    TupletInteger(PP_KEY_CMD, PP_CMD_INVALID),
+    TupletInteger(PP_KEY_X, (int) 0x11111111),
+    TupletInteger(PP_KEY_Y, (int) 0x22222222),
+    TupletInteger(PP_KEY_Z, (int) 0x33333333),
+  };
+  
+  Tuplet vector_dict_velocity[] = {
+    TupletInteger(PP_KEY_CMD, PP_CMD_INVALID),
+    TupletInteger(PP_KEY_X, (int) 0x11111111),
+    TupletInteger(PP_KEY_Y, (int) 0x22222222),
+    TupletInteger(PP_KEY_Z, (int) 0x33333333),
+  };
+  
+  Tuplet vector_dict_position[] = {
     TupletInteger(PP_KEY_CMD, PP_CMD_INVALID),
     TupletInteger(PP_KEY_X, (int) 0x11111111),
     TupletInteger(PP_KEY_Y, (int) 0x22222222),
     TupletInteger(PP_KEY_Z, (int) 0x33333333),
   };
 
-  syncChangeCount = ARRAY_LENGTH(vector_dict);
+  syncChangeCount = ARRAY_LENGTH(vector_dict_acceleration);
 
   app_sync_init( &sync,
                  sync_buffer, sizeof(sync_buffer),
-                 vector_dict, ARRAY_LENGTH(vector_dict),
+                 vector_dict_velocity, ARRAY_LENGTH(vector_dict_velocity),
                  sync_tuple_changed_callback,
                  sync_error_callback,
-                 NULL );
+                 NULL);
+  
+  DictionaryIterator *iter;
+  
+  Tuple *vectorX_tuple = dict_find(iter, PP_KEY_X);
+  Tuple *vectorY_tuple = dict_find(iter, PP_KEY_Y);
+  Tuple *vectorZ_tuple = dict_find(iter, PP_KEY_Z);
+  
+  if(vector_tuple) {
+    coordinateAccX = vectorX_tuple->value->int32;
+    coordinateAccY = vectorY_tuple->value->int32;
+    coordinateAccZ = vectorZ_tuple->value->int32;
+  }
+  
 // Layer *window_layer = window_get_root_layer(window);
 //	GRect bounds = layer_get_bounds(window_layer);
 /*
@@ -156,6 +219,7 @@ static void window_load(Window * window)
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
+
 static void window_unload(Window * window)
 {
   APP_LOG(APP_LOG_LEVEL_INFO, "%s", __FUNCTION__);
@@ -178,6 +242,7 @@ static void window_unload(Window * window)
 /*  is decremented. Only when the syncChangeCount is zero will a new          */
 /*  dictionary be built and sent.                                             */
 /*----------------------------------------------------------------------------*/
+
 void accel_data_callback(void * data, uint32_t num_samples)
 {
   AppMessageResult result;
@@ -194,12 +259,7 @@ void accel_data_callback(void * data, uint32_t num_samples)
   }
 
   /* Build the dictionary to hold this vector */
-  Tuplet vector_dict[] = {
-    TupletInteger(PP_KEY_CMD, PP_CMD_VECTOR),
-    TupletInteger(PP_KEY_X, (int) vector->x),
-    TupletInteger(PP_KEY_Y, (int) vector->y),
-    TupletInteger(PP_KEY_Z, (int) vector->z),
-  };
+  
   /*
   if(vector->x > 1000 && vector->z > 1000){
     isPeak = true;
@@ -219,18 +279,17 @@ void accel_data_callback(void * data, uint32_t num_samples)
     isPeak = false;
     
   }
-
   */
   
   /* Send the newly built dictionary to the remote side. */
-  result = app_sync_set( &sync, vector_dict, ARRAY_LENGTH(vector_dict) );
+  result = app_sync_set( &sync, vector_dict_acceleration, ARRAY_LENGTH(vector_dict_acceleration) );
 
   if (result != APP_MSG_OK) {
       APP_LOG(APP_LOG_LEVEL_DEBUG, "app_sync_set: APP_MSG_%s",
              AppMessageResult_to_String(result));
   }
   else {
-    syncChangeCount = ARRAY_LENGTH(vector_dict);
+    syncChangeCount = ARRAY_LENGTH(vector_dict_velocity);
     syncStats.sync_set++;
   }
 }
@@ -260,6 +319,7 @@ void accel_data_callback(void * data, uint32_t num_samples)
 /*        event. I have found that a rapid rotation of the wrist produces     */
 /*        a more reliable result.                                             */
 /*----------------------------------------------------------------------------*/
+
 void accel_tap_callback(AccelAxisType axis, uint32_t direction)
 {
   /*
@@ -299,6 +359,7 @@ void accel_tap_callback(AccelAxisType axis, uint32_t direction)
 /*----------------------------------------------------------------------------*/
 /* This is called whenever the connection state changes.                      */
 /*----------------------------------------------------------------------------*/
+
 void bluetooth_connection_callback(bool connected)
 {
   isConnected = connected;
@@ -310,6 +371,7 @@ void bluetooth_connection_callback(bool connected)
 /*  NOTE: This app is started automatically by the remote side request for    */
 /*        its activation.  You do not need start this app via the watch I/F.  */
 /*----------------------------------------------------------------------------*/
+
 int main(void)
 {
   APP_LOG(APP_LOG_LEVEL_INFO, "main: entry:  %s %s", __TIME__, __DATE__);
@@ -318,6 +380,7 @@ int main(void)
    *   Commission App
    */
   window = window_create();
+  calibration();
 
   WindowHandlers handlers = {.load = window_load, .unload = window_unload };
   window_set_window_handlers(window, handlers);
@@ -329,6 +392,7 @@ int main(void)
   //GRect bounds = layer_get_frame(window_layer);
 
   /* Display the simple splash screen to indicate PebblePointer is running. */
+  
   //image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_PEBBLEPOINTER);
   //image_layer = bitmap_layer_create(bounds);
   //bitmap_layer_set_bitmap(image_layer, image);
@@ -336,11 +400,13 @@ int main(void)
   //layer_add_child(window_layer, bitmap_layer_get_layer(image_layer));
 
   /* Basic accelerometer initialization.  Enable Tap-Tap functionality. */
+  
   accel_service_set_sampling_rate( SAMPLING_RATE );
   accel_tap_service_subscribe( (AccelTapHandler) accel_tap_callback );
   app_message_open(SYNC_BUFFER_SIZE, SYNC_BUFFER_SIZE);
 
   /* Request notfication on Bluetooth connectivity changes.  */
+  
   bluetooth_connection_service_subscribe( bluetooth_connection_callback );
   isConnected = bluetooth_connection_service_peek();
   APP_LOG(APP_LOG_LEVEL_INFO, "initially %sonnected", (isConnected) ? "c" : "disc");
@@ -348,7 +414,14 @@ int main(void)
   /*
    *   Event Processing
    */
+  
   app_event_loop();
+  
+  /*
+   *   Calculation
+   */
+  
+  integration(vector_dict_acceleration[], vector_dict_velocity[],vector_dict_position[]);
 
   /*
    *   Decommission App
@@ -361,6 +434,7 @@ int main(void)
   accel_tap_service_unsubscribe();
 
   /* Release splash-screen resources */
+  
   gbitmap_destroy(image);
   bitmap_layer_destroy(image_layer);
   window_destroy(window);
